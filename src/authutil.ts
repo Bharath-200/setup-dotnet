@@ -5,7 +5,6 @@ import * as github from '@actions/github';
 import {XMLParser, XMLBuilder} from 'fast-xml-parser';
 
 export function configAuthentication(
-  
   feedUrl: string,
   existingFileLocation = '',
   processRoot: string = process.cwd()
