@@ -1,0 +1,70 @@
+name: latestMajor regression
+
+on:
+  push:
+    branches:
+      - codex/fix-latest-major-minimum
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**'
+      - '__tests__/**'
+      - 'dist/setup/**'
+      - '.github/workflows/latest-major-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run format-check
+      - run: npm run lint
+      - run: npm test -- --runInBand
+      - run: npm run build
+      - run: git diff --exit-code -- dist
+
+  resolve-global-json:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Isolate the test from SDKs preinstalled on hosted runners.
+      DOTNET_INSTALL_DIR: ${{ runner.temp }}/latest-major-dotnet
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Write global.json requiring STS newer than LTS
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path latest-major-project | Out-Null
+          '{"sdk":{"version":"11.0.100","rollForward":"latestMajor","allowPrerelease":false}}' | Set-Content latest-major-project/global.json
+      - name: Install SDK with the checked-out action
+        id: setup
+        uses: ./
+        with:
+          global-json-file: latest-major-project/global.json
+          check-latest: true
+      - name: Resolve SDK using the original global.json
+        shell: pwsh
+        working-directory: latest-major-project
+        env:
+          INSTALLED_SDK: ${{ steps.setup.outputs.dotnet-version }}
+        run: |
+          $selectedSdk = dotnet --version
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The installed SDK does not satisfy global.json.'
+          }
+          if ([version]$selectedSdk -lt [version]'11.0.100') {
+            throw "SDK $selectedSdk is older than the required 11.0.100."
+          }
+          if ($selectedSdk -ne $env:INSTALLED_SDK) {
+            throw "Selected SDK $selectedSdk differs from the action output $env:INSTALLED_SDK."
+          }

@@ -299,14 +299,28 @@ jobs:
         shell: bash
         run: |
           mkdir subdirectory
-          echo '{"sdk":{"version": "8.0.100","rollForward": "latestMajor"}}' > ./subdirectory/global.json
+          echo '{"sdk":{"version": "11.0.100","rollForward": "latestMajor","allowPrerelease": false}}' > ./subdirectory/global.json
       - name: Setup dotnet
+        id: setup-latest-major
         uses: ./
         with:
           global-json-file: ./subdirectory/global.json
-      - name: Verify dotnet
+      - name: Verify SDK resolution with the original global.json
         shell: pwsh
-        run: __tests__/verify-dotnet.ps1 -Patterns "^(?!8)"
+        working-directory: ./subdirectory
+        env:
+          INSTALLED_SDK: ${{ steps.setup-latest-major.outputs.dotnet-version }}
+        run: |
+          $selectedSdk = dotnet --version
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The installed SDK does not satisfy global.json.'
+          }
+          if ([version]$selectedSdk -lt [version]'11.0.100') {
+            throw "SDK $selectedSdk is older than the required 11.0.100."
+          }
+          if ($selectedSdk -ne $env:INSTALLED_SDK) {
+            throw "Selected SDK $selectedSdk differs from the action output $env:INSTALLED_SDK."
+          }
 
   test-setup-global-json-rollforward-latestfeature:
     runs-on: ${{ matrix.operating-system }}

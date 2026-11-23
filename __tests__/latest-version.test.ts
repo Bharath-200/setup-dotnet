@@ -117,6 +117,72 @@ describe('DotnetVersionResolver with latest', () => {
     expect(version.value).toBe('9.0');
   });
 
+  it.each(['', 'preview', 'daily'] as const)(
+    'resolves global.json latestMajor to stable STS with quality=%s',
+    async quality => {
+      getJsonMock.mockResolvedValue({result: mockReleases});
+      const version = await new DotnetVersionResolver(
+        '',
+        quality,
+        undefined,
+        'latestMajor'
+      ).createDotnetVersion();
+      expect(version.value).toBe('9.0');
+      expect(version.type.toLowerCase()).toContain('channel');
+      expect(version.qualityFlag).toBe(false);
+    }
+  );
+
+  it.each(['', '*', 'x', 'X'])(
+    'preserves LTS resolution for unrelated version %j',
+    async input => {
+      const version = await new DotnetVersionResolver(
+        input
+      ).createDotnetVersion();
+      expect(version.value).toBe('LTS');
+      expect(getJsonMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it('fails latestMajor resolution when the releases index is unavailable', async () => {
+    getJsonMock.mockRejectedValue(new Error('releases index unavailable'));
+    await expect(
+      new DotnetVersionResolver(
+        '',
+        '',
+        undefined,
+        'latestMajor'
+      ).createDotnetVersion()
+    ).rejects.toThrow('releases index unavailable');
+  });
+
+  it('fails latestMajor resolution when no supported stable channel exists', async () => {
+    getJsonMock.mockResolvedValue({
+      result: {
+        'releases-index': [
+          {
+            'channel-version': '12.0',
+            'support-phase': 'preview',
+            'release-type': 'lts'
+          },
+          {
+            'channel-version': '11.0',
+            'support-phase': 'eol',
+            'release-type': 'sts'
+          }
+        ]
+      }
+    });
+    await expect(
+      new DotnetVersionResolver(
+        '',
+        '',
+        undefined,
+        'latestMajor'
+      ).createDotnetVersion()
+    ).rejects.toThrow(/Could not find any active releases/);
+  });
+
   it('should warn if channel is provided but version is not latest', async () => {
     getJsonMock.mockResolvedValue({result: mockReleases});
 

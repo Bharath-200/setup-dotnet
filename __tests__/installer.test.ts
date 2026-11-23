@@ -581,12 +581,44 @@ describe('installer tests', () => {
           isSymbolicLink: () => true
         }));
 
+      let releasesIndexSpy: ReturnType<typeof jest.spyOn>;
+
       beforeEach(() => {
+        releasesIndexSpy = jest
+          .spyOn(hc.HttpClient.prototype, 'getJson')
+          .mockResolvedValue({
+            statusCode: 200,
+            headers: {},
+            result: {
+              'releases-index': [
+                {
+                  'channel-version': '12.0',
+                  'support-phase': 'preview',
+                  'release-type': 'lts'
+                },
+                {
+                  'channel-version': '10.0',
+                  'support-phase': 'active',
+                  'release-type': 'lts'
+                },
+                {
+                  'channel-version': '11.0',
+                  'support-phase': 'active',
+                  'release-type': 'sts'
+                },
+                {
+                  'channel-version': '9.0',
+                  'support-phase': 'eol',
+                  'release-type': 'sts'
+                }
+              ]
+            }
+          });
         getExecOutputSpy.mockClear();
         getExecOutputSpy.mockImplementation(() =>
           Promise.resolve({
             exitCode: 0,
-            stdout: 'Fictitious dotnet version 1.2.3 is installed',
+            stdout: 'Fictitious dotnet version 11.0.100 is installed',
             stderr: ''
           })
         );
@@ -595,6 +627,7 @@ describe('installer tests', () => {
       });
 
       afterEach(() => {
+        releasesIndexSpy.mockRestore();
         readdirSyncSpy.mockReset();
         statSyncSpy.mockReset();
         accessSyncSpy.mockReset();
@@ -1242,6 +1275,98 @@ describe('installer tests', () => {
             }
           }
         );
+      });
+
+      describe('global.json online minimum version tests', () => {
+        const install = (minimumVersion = '11.0.100', checkLatest = true) =>
+          new installer.DotnetCoreInstaller(
+            '',
+            '',
+            undefined,
+            undefined,
+            checkLatest,
+            minimumVersion,
+            'latestMajor'
+          ).installDotnet();
+
+        beforeEach(() => {
+          readdirSyncSpy.mockReturnValue(makeDirents([]));
+        });
+
+        it.each([true, false])(
+          'installs STS rather than older LTS with check-latest=%s',
+          async checkLatest => {
+            await expect(install('11.0.100', checkLatest)).resolves.toBe(
+              '11.0.100'
+            );
+            const sdkArguments = getExecOutputSpy.mock.calls.at(
+              -1
+            )![1] as string[];
+            expect(sdkArguments).toEqual(
+              expect.arrayContaining([
+                IS_WINDOWS ? '-Channel' : '--channel',
+                '11.0'
+              ])
+            );
+          }
+        );
+
+        it.each(['10.0.404', '11.0.100'])(
+          'rejects SDK %s below the declared minimum',
+          async version => {
+            getExecOutputSpy.mockResolvedValue({
+              exitCode: 0,
+              stdout: `Installed version is ${version}`,
+              stderr: ''
+            });
+            await expect(install('11.0.200')).rejects.toThrow(
+              `The installed .NET SDK ${version} is older than the global.json minimum version 11.0.200.`
+            );
+          }
+        );
+
+        it.each(['11.0.200', '11.0.300', '12.0.100'])(
+          'accepts SDK %s at or above the declared minimum',
+          async version => {
+            getExecOutputSpy.mockResolvedValue({
+              exitCode: 0,
+              stdout: `Installed version is ${version}`,
+              stderr: ''
+            });
+            await expect(install('11.0.200')).resolves.toBe(version);
+          }
+        );
+
+        it.each([
+          'Installation succeeded',
+          'Installed version is 11.0.99999999999999999'
+        ])(
+          'fails when the installed version cannot be validated: %s',
+          async stdout => {
+            getExecOutputSpy.mockResolvedValue({
+              exitCode: 0,
+              stdout,
+              stderr: ''
+            });
+            await expect(install()).rejects.toThrow(
+              'Unable to verify the installed .NET SDK against the global.json minimum version 11.0.100.'
+            );
+          }
+        );
+
+        it('keeps an unrelated empty-version request on LTS', async () => {
+          await new installer.DotnetCoreInstaller('', '').installDotnet();
+          const sdkArguments = getExecOutputSpy.mock.calls.at(
+            -1
+          )![1] as string[];
+          expect(sdkArguments).toEqual(
+            expect.arrayContaining([
+              IS_WINDOWS ? '-Channel' : '--channel',
+              'LTS'
+            ])
+          );
+          expect(releasesIndexSpy).not.toHaveBeenCalled();
+        });
       });
 
       describe('skip-lts-prepass tests', () => {

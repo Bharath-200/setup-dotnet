@@ -604,35 +604,44 @@ describe('setup-dotnet tests', () => {
       );
     });
 
-    it('should pass the global.json rollForward minimum version to DotnetCoreInstaller', async () => {
-      inputs['dotnet-version'] = [];
-      inputs['dotnet-quality'] = '';
-      inputs['dotnet-channel'] = '';
-      inputs['architecture'] = '';
-      inputs['check-latest'] = 'false';
-      inputs['global-json-file'] = 'global.json';
+    it.each([
+      ['latestFeature', '8.0'],
+      ['latestMajor', '']
+    ])(
+      'should pass the global.json %s minimum and policy to DotnetCoreInstaller',
+      async (policy, resolvedVersion) => {
+        inputs['dotnet-version'] = [];
+        inputs['dotnet-quality'] = '';
+        inputs['dotnet-channel'] = '';
+        inputs['architecture'] = '';
+        inputs['check-latest'] = 'false';
+        inputs['global-json-file'] = 'global.json';
 
-      existsSyncSpy.mockReturnValue(true);
-      readFileSyncSpy.mockReturnValue(
-        JSON.stringify({
-          sdk: {version: '8.0.400', rollForward: 'latestFeature'}
-        })
-      );
+        existsSyncSpy.mockReturnValue(true);
+        readFileSyncSpy.mockReturnValue(
+          JSON.stringify({
+            sdk: {version: '8.0.400', rollForward: policy}
+          })
+        );
 
-      let capturedVersion: string | undefined;
-      let capturedMinimumVersion: string | undefined;
-      installDotnetSpy.mockImplementation(function (this: any) {
-        capturedVersion = this.version;
-        capturedMinimumVersion = this.minimumVersion;
-        return Promise.resolve('8.0.412');
-      });
+        let capturedVersion: string | undefined;
+        let capturedMinimumVersion: string | undefined;
+        let capturedRollForward: string | undefined;
+        installDotnetSpy.mockImplementation(function (this: any) {
+          capturedVersion = this.version;
+          capturedMinimumVersion = this.minimumVersion;
+          capturedRollForward = this.rollForward;
+          return Promise.resolve('8.0.412');
+        });
 
-      await setup.run();
-      inputs['global-json-file'] = '';
+        await setup.run();
+        inputs['global-json-file'] = '';
 
-      expect(capturedVersion).toBe('8.0');
-      expect(capturedMinimumVersion).toBe('8.0.400');
-    });
+        expect(capturedVersion).toBe(resolvedVersion);
+        expect(capturedMinimumVersion).toBe('8.0.400');
+        expect(capturedRollForward).toBe(policy);
+      }
+    );
 
     it('should pass non-latest rollForward policies to DotnetCoreInstaller', async () => {
       inputs['dotnet-version'] = [];

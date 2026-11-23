@@ -204,6 +204,8 @@ steps:
 
 > **Note**: The action supports `latest*` variants of the [rollForward](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json#rollforward) field in `global.json`. When set to `latestPatch`, `latestFeature`, `latestMinor`, or `latestMajor`, the action installs the appropriate SDK version. For prerelease versions, the exact pinned version is always installed regardless of the `rollForward` setting.
 
+With `latestMajor`, the action selects the newest supported stable channel across both LTS and STS releases. `dotnet-quality` is ignored for this policy, consistent with local SDK reuse. An online installation fails if its SDK version is below the `sdk.version` minimum or the installed version cannot be verified.
+
 > **Important**: When using `rollForward` in `global.json`, the `sdk.version` field must be a fully-qualified SDK version (e.g., `8.0.100`, `10.0.100`). Wildcard versions (e.g., `10.0.*`) and runtime-style versions (e.g., `8.0.0`) are not supported. See the [.NET SDK version specification](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json#version) for details.
 
 ## Caching NuGet Packages
