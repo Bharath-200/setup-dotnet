@@ -36,9 +36,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      # Isolate the test from SDKs preinstalled on hosted runners.
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/latest-major-dotnet
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Write global.json requiring STS newer than LTS
@@ -49,6 +46,9 @@ jobs:
       - name: Install SDK with the checked-out action
         id: setup
         uses: ./
+        env:
+          # Isolate the test from SDKs preinstalled on hosted runners.
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/latest-major-dotnet
         with:
           global-json-file: latest-major-project/global.json
           check-latest: true
