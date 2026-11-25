@@ -1,0 +1,81 @@
+name: Ubuntu slim NuGet cache check
+
+on:
+  push:
+    branches: [codex/check-ubuntu-slim-cache]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  TEST_TARGET_FRAMEWORK: net10.0
+
+jobs:
+  seed-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record runner image and scope the cache to this attempt
+        run: |
+          . /etc/os-release
+          printf 'OS=%s RUNNER_OS=%s ImageOS=%s\n' "$PRETTY_NAME" "$RUNNER_OS" "${ImageOS:-<unset>}"
+          printf '%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > cache-run-id.txt
+      - name: Set up .NET and look up the NuGet cache
+        id: setup
+        uses: ./
+        with:
+          dotnet-version: '10.0.101'
+          skip-lts-prepass: true
+          cache: true
+          cache-dependency-path: |
+            __tests__/e2e-test-csproj/packages.lock.json
+            cache-run-id.txt
+      - name: Seed the cache with NuGet packages
+        env:
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+        run: |
+          test "$CACHE_HIT" = false
+          dotnet restore __tests__/e2e-test-csproj/test.csproj --locked-mode
+          cp cache-run-id.txt "$NUGET_PACKAGES/cache-run-id.txt"
+
+  restore-on-slim:
+    needs: seed-cache
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record runner image and scope the cache to this attempt
+        run: |
+          . /etc/os-release
+          printf 'OS=%s RUNNER_OS=%s ImageOS=%s\n' "$PRETTY_NAME" "$RUNNER_OS" "${ImageOS:-<unset>}"
+          printf '%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > cache-run-id.txt
+      - name: Set up .NET and restore the NuGet cache
+        id: setup
+        uses: ./
+        with:
+          dotnet-version: '10.0.101'
+          skip-lts-prepass: true
+          cache: true
+          cache-dependency-path: |
+            __tests__/e2e-test-csproj/packages.lock.json
+            cache-run-id.txt
+      - name: Verify the cache seeded on ubuntu-latest was restored
+        env:
+          CACHE_HIT: ${{ steps.setup.outputs.cache-hit }}
+        run: |
+          printf 'cache-hit=%s\n' "$CACHE_HIT"
+          test "$CACHE_HIT" = true
+          cmp cache-run-id.txt "$NUGET_PACKAGES/cache-run-id.txt"
+          test -d "$NUGET_PACKAGES/mstest.testframework/4.0.2"
